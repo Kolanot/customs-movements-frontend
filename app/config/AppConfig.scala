@@ -22,7 +22,7 @@ import features.FeatureStatus.FeatureStatus
 import features.{Feature, FeatureStatus}
 import javax.inject.Named
 import play.api.i18n.Lang
-import play.api.{Configuration, Environment}
+import play.api.{Configuration, Environment, Logger}
 import uk.gov.hmrc.play.bootstrap.config.ServicesConfig
 
 @Singleton
@@ -114,4 +114,23 @@ class AppConfig @Inject()(
 
   private def str2FeatureStatus(str: String): FeatureStatus =
     FeatureStatus.withName(str)
+
+  private def getBooleanConfig(key: String, default: Boolean): Boolean = {
+    runModeConfiguration.getBoolean(key).getOrElse(default)
+  }
+
+  lazy val mongoEncryption: MongoEncryption = {
+    val encryptionEnabled = getBooleanConfig("mongodb.encryption.enabled", default = false)
+    val encryptionKey = {
+      if (encryptionEnabled) Some(loadConfig("mongodb.encryption.key"))
+      else None
+    }
+
+    if (encryptionEnabled && encryptionKey.isDefined) Logger.info("Mongo encryption enabled")
+    else Logger.info("Mongo encryption disabled")
+
+    MongoEncryption(encryptionEnabled, encryptionKey)
+  }
 }
+
+case class MongoEncryption(enabled: Boolean = false, key: Option[String] = None)

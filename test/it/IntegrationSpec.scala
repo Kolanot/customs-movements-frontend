@@ -21,15 +21,15 @@ import models.cache.{Answers, Cache}
 import org.scalatest.concurrent.Eventually
 import org.scalatest.{BeforeAndAfterEach, MustMatchers, WordSpec}
 import org.scalatestplus.play.guice.GuiceOneServerPerSuite
+import play.api.Application
 import play.api.inject.guice.GuiceApplicationBuilder
 import play.api.libs.json.Json
 import play.api.mvc.{AnyContentAsFormUrlEncoded, Call, Request, Result}
 import play.api.test.Helpers._
 import play.api.test.{CSRFTokenHelper, FakeRequest}
-import play.api.{Application, Logger}
 import reactivemongo.play.json.ImplicitBSONHandlers._
 import reactivemongo.play.json.collection.JSONCollection
-import repositories.CacheRepository
+import repositories.CacheMongoRepository
 import repository.TestMongoDB
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -39,12 +39,12 @@ abstract class IntegrationSpec
     extends WordSpec with MustMatchers with BeforeAndAfterEach with GuiceOneServerPerSuite with AuthWiremockTestServer
     with MovementsBackendWiremockTestServer with AuditWiremockTestServer with Eventually with TestMongoDB {
 
+  override lazy val port = 14681
   /*
     Intentionally NOT exposing the real CacheRepository as we shouldn't test our production code using our production classes.
    */
-  private lazy val cacheRepository: JSONCollection = app.injector.instanceOf[CacheRepository].collection
+  private lazy val cacheRepository: JSONCollection = app.injector.instanceOf[CacheMongoRepository].collection
 
-  override lazy val port = 14681
   override def fakeApplication(): Application =
     new GuiceApplicationBuilder()
       .disable[com.kenshoo.play.metrics.PlayModule]

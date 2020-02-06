@@ -16,7 +16,8 @@
 
 package repositories
 
-import javax.inject.Inject
+import crypto.Crypto
+import javax.inject.{Inject, Singleton}
 import models.cache.Cache
 import play.api.libs.json.{JsObject, Json}
 import play.modules.reactivemongo.ReactiveMongoComponent
@@ -27,27 +28,60 @@ import uk.gov.hmrc.mongo.json.ReactiveMongoFormats.objectIdFormats
 
 import scala.concurrent.{ExecutionContext, Future}
 
-class CacheRepository @Inject()(mc: ReactiveMongoComponent)(implicit ec: ExecutionContext)
-    extends ReactiveRepository[Cache, BSONObjectID]("cache", mc.mongoConnector.db, Cache.format, objectIdFormats) {
+trait CacheRepository {
+
+  def removeByEori(eori: String): Future[Unit]
+
+  def findOrCreate(eori: String, onMissing: Cache): Future[Cache]
+
+  def findByEori(eori: String): Future[Option[Cache]]
+
+  def upsert(cache: Cache): Future[Cache]
+}
+
+@Singleton
+class EncryptedCacheMongoRepository @Inject()(repository: CacheMongoRepository, crypto: Crypto) extends CacheRepository {
+
+  import scala.concurrent.ExecutionContext.Implicits.global
+
+  private def encrypt: Cache => Cache = crypto.encrypt
+
+  private def decrypt: Cache => Cache = crypto.decrypt
+
+  private def encryptString: String => String = crypto.encryptString
+
+  override def removeByEori(eori: String): Future[Unit] = repository.removeByEori(encryptString(eori))
+
+  override def findOrCreate(eori: String, onMissing: Cache): Future[Cache] =
+    repository.findOrCreate(crypto.encryptString(eori), encrypt(onMissing)).map(decrypt)
+
+  override def findByEori(eori: String): Future[Option[Cache]] = repository.findByEori(crypto.encryptString(eori)).map(_.map(decrypt))
+
+  override def upsert(cache: Cache): Future[Cache] = repository.upsert(encrypt(cache)).map(decrypt)
+}
+
+@Singleton
+class CacheMongoRepository @Inject()(mc: ReactiveMongoComponent)(implicit ec: ExecutionContext)
+    extends ReactiveRepository[Cache, BSONObjectID]("cache", mc.mongoConnector.db, Cache.format, objectIdFormats) with CacheRepository {
 
   override def indexes: Seq[Index] = Seq(Index(Seq("eori" -> IndexType.Ascending), name = Some("eoriIdx")))
 
-  def findByEori(eori: String): Future[Option[Cache]] = find("eori" -> eori).map(_.headOption)
+  override def removeByEori(eori: String): Future[Unit] = remove("eori" -> eori).filter(_.ok).map(_ => (): Unit)
 
-  def removeByEori(eori: String): Future[Unit] = remove("eori" -> eori).filter(_.ok).map(_ => (): Unit)
-
-  def findOrCreate(eori: String, onMissing: Cache): Future[Cache] =
+  override def findOrCreate(eori: String, onMissing: Cache): Future[Cache] =
     findByEori(eori).flatMap {
       case Some(movementCache) => Future.successful(movementCache)
       case None                => save(onMissing)
     }
+
+  override def findByEori(eori: String): Future[Option[Cache]] = find("eori" -> eori).map(_.headOption)
 
   private def save(movementCache: Cache): Future[Cache] = insert(movementCache).map { res =>
     if (!res.ok) logger.error(s"Errors when persisting movement cache: ${res.writeErrors.mkString("--")}")
     movementCache
   }
 
-  def upsert(cache: Cache): Future[Cache] =
+  override def upsert(cache: Cache): Future[Cache] =
     findAndUpdate(Json.obj("eori" -> cache.eori), Json.toJson(cache).as[JsObject])
       .map(_.value.map(_.as[Cache]))
       .flatMap {
