@@ -36,9 +36,6 @@ class CacheRepositoryModule extends play.api.inject.Module {
         logger.info("Mongo encryption disabled")
         bind[CacheRepository].to[CacheMongoRepository]
       }
-    Seq(
-      bind[CompositeSymmetricCrypto].to(classOf[LocalCrypto]),
-      repositoryBinding
-    )
+    Seq(bind[CompositeSymmetricCrypto].to(classOf[LocalCrypto]), repositoryBinding)
   }
 }

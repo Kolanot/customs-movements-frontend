@@ -115,9 +115,8 @@ class AppConfig @Inject()(
   private def str2FeatureStatus(str: String): FeatureStatus =
     FeatureStatus.withName(str)
 
-  private def getBooleanConfig(key: String, default: Boolean): Boolean = {
+  private def getBooleanConfig(key: String, default: Boolean): Boolean =
     runModeConfiguration.getBoolean(key).getOrElse(default)
-  }
 
   lazy val mongoEncryption: MongoEncryption = {
     val encryptionEnabled = getBooleanConfig("mongodb.encryption.enabled", default = false)
